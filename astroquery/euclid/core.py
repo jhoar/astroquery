@@ -23,8 +23,8 @@ from astropy.units import Quantity
 __all__ = ['Euclid', 'EuclidClass']
 
 MAIN_TABLE = "public.sc3_mer_cat_10"
-MAIN_TABLE_RA = "ra"
-MAIN_TABLE_DEC = "dec"
+MAIN_TABLE_RA = "rightascension"
+MAIN_TABLE_DEC = "declination"
 
 
 class EuclidClass(object):
