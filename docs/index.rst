@@ -25,8 +25,12 @@ Check out the :doc:`gallery` for some nice examples.
 
 Installation
 ------------
+
 The latest version of astroquery can be conda installed while the latest and
 development versions can be pip installed or be downloaded directly from GitHub.
+On Linux systems the recommended way to install astroquery is to use the
+package management system to install the packages offered in the official
+repositories.
 
 Using pip
 ^^^^^^^^^
@@ -50,6 +54,33 @@ It is also possible to install the latest astroquery with `anaconda
 
     $ conda install -c astropy astroquery
 
+Archlinux
+^^^^^^^^^
+
+The current stable version of astroquery can be installed directly from the
+Arch User Repository `python-astroquery package
+<https://aur.archlinux.org/packages/python-astroquery/>`_,
+while the latest version of the development branch in the git repository
+can be installed from the `python-astroquery-git package
+<https://aur.archlinux.org/packages/python-astroquery-git/>`_.
+
+Debian
+^^^^^^
+
+Astroquery packages for `python 2
+<https://packages.debian.org/python-astroquery>`_ and `python 3
+<https://packages.debian.org/python3-astroquery>`_  have been part of the
+Debian distribution since the release of Debian 9.0 (stretch).  These packages
+can be installed using usual package maintenance tools like ``apt-get`` or
+``aptitude``.
+
+Gentoo
+^^^^^^
+
+An `astroquery ebuild
+<https://packages.gentoo.org/packages/dev-python/astroquery>`_ is available
+from the official Gentoo ebuild repository and can be installed with the
+Portage package manager.
 
 Building from source
 ^^^^^^^^^^^^^^^^^^^^
@@ -144,50 +175,52 @@ The following modules have been completed using a common API:
 .. toctree::
   :maxdepth: 1
 
-  simbad/simbad.rst
-  vizier/vizier.rst
+  alma/alma.rst
+  atomic/atomic.rst
+  besancon/besancon.rst
   esasky/esasky.rst
-  irsa/irsa_dust.rst
-  ned/ned.rst
-  splatalogue/splatalogue.rst
-  vamdc/vamdc.rst
+  eso/eso.rst
+  gaia/gaia.rst
+  gama/gama.rst
+  heasarc/heasarc.rst
   ibe/ibe.rst
   irsa/irsa.rst
-  ukidss/ukidss.rst
+  irsa/irsa_dust.rst
   magpis/magpis.rst
-  nrao/nrao.rst
-  besancon/besancon.rst
-  nist/nist.rst
-  nvas/nvas.rst
-  gama/gama.rst
-  eso/eso.rst
-  xmatch/xmatch.rst
-  atomic/atomic.rst
-  alma/alma.rst
-  skyview/skyview.rst
-  nasa_ads/nasa_ads.rst
-  heasarc/heasarc.rst
-  gaia/gaia.rst
-  vo_conesearch/vo_conesearch.rst
   mast/mast.rst
+  mpc/mpc.rst
+  nasa_ads/nasa_ads.rst
+  ned/ned.rst
+  nist/nist.rst
+  nrao/nrao.rst
+  nvas/nvas.rst
+  simbad/simbad.rst
+  skyview/skyview.rst
+  splatalogue/splatalogue.rst
+  ukidss/ukidss.rst
+  vamdc/vamdc.rst
+  vizier/vizier.rst
+  vo_conesearch/vo_conesearch.rst
+  xmatch/xmatch.rst
 
 These others are functional, but do not follow a common & consistent API:
 
 .. toctree::
   :maxdepth: 1
 
-  fermi/fermi.rst
-  sdss/sdss.rst
   alfalfa/alfalfa.rst
-  sha/sha.rst
+  cosmosim/cosmosim.rst
+  exoplanet_orbit_database/exoplanet_orbit_database.rst
+  fermi/fermi.rst
+  hitran/hitran.rst
+  jplhorizons/jplhorizons.rst
   lamda/lamda.rst
+  nasa_exoplanet_archive/nasa_exoplanet_archive.rst
+  oac/oac.rst
   ogle/ogle.rst
   open_exoplanet_catalogue/open_exoplanet_catalogue.rst
-  cosmosim/cosmosim.rst
-  hitran/hitran.rst
-  nasa_exoplanet_archive/nasa_exoplanet_archive.rst
-  exoplanet_orbit_database/exoplanet_orbit_database.rst
-  oac/oac.rst
+  sdss/sdss.rst
+  sha/sha.rst
 
 Catalog, Archive, and Other
 ===========================
@@ -210,6 +243,7 @@ for each source)
   ibe/ibe.rst
   irsa/irsa.rst
   irsa/irsa_dust.rst
+  mast/mast.rst
   ned/ned.rst
   ogle/ogle.rst
   open_exoplanet_catalogue/open_exoplanet_catalogue.rst
