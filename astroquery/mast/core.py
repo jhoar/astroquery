@@ -17,6 +17,7 @@ import os
 import re
 import keyring
 import threading
+import datetime
 
 import numpy as np
 
@@ -108,6 +109,9 @@ def _mashup_json_to_table(json_obj, col_config=None):
         if atype == "int":  # int arrays do not admit Non/nan vals
             atype = np.int64
             ignoreValue = -999 if (ignoreValue is None) else ignoreValue
+        if atype == "date":
+            atype = "str"
+            ignoreValue = "" if (ignoreValue is None) else ignoreValue
 
         # Make the column list (don't assign final type yet or there will be errors)
         colData = np.array([x.get(col, ignoreValue) for x in json_obj['data']], dtype=object)
@@ -411,10 +415,28 @@ class MastClass(QueryWithLogin):
                    "Content-type": "application/x-www-form-urlencoded",
                    "Accept": "text/plain"}
 
-        response = self._request("POST", self._COLUMNS_CONFIG_URL,
-                                 data=("colConfigId="+fetch_name), headers=headers)
+        if "Catalogs.All" in fetch_name:  # Using the histogram properties instead of columngs config
 
-        self._column_configs[service] = response[0].json()
+            mashupRequest = {'service': fetch_name, 'params': {}, 'format': 'extjs'}
+            reqString = _prepare_service_request_string(mashupRequest)
+            response = self._request("POST", self._MAST_REQUEST_URL, data=reqString, headers=headers)
+            jsonResponse = response[0].json()
+
+            # When using the histogram data to fill to col_config some processing must be done
+            col_config = jsonResponse['data']['Tables'][0]['ExtendedProperties']['discreteHistogram']
+            col_config.update(jsonResponse['data']['Tables'][0]['ExtendedProperties']['continuousHistogram'])
+
+            for col, val in col_config.items():
+                val.pop('hist', None)  # don't want to save all this unecessary data
+
+            self._column_configs[service] = col_config
+
+        else:
+
+            response = self._request("POST", self._COLUMNS_CONFIG_URL,
+                                     data=("colConfigId="+fetch_name), headers=headers)
+
+            self._column_configs[service] = response[0].json()
 
     def _parse_result(self, responses, verbose=False):
         """
@@ -520,40 +542,6 @@ class MastClass(QueryWithLogin):
 
             return self._shib_login(username, password)
 
-    def login(self, username=None, password=None, session_token=None,
-              store_password=False, reenter_password=False):  # pragma: no cover
-        """
-        Log into the MAST portal.
-
-        Parameters
-        ----------
-        username : string, optional
-            Default is None.
-            The username for the user logging in.
-            Usually this will be the user's email address.
-            If a username is necessary but not supplied it will be prompted for.
-        password : string, optional
-            Default is None.
-            The password associated with the given username.
-            For security passwords should not be typed into the terminal or jupyter
-            notebook, but input using a more secure method such as `~getpass.getpass`.
-            If a password is necessary but not supplied it will be prompted for.
-        session_token : dict or `~http.cookiejar.Cookie`, optional
-            A valid MAST session cookie that will be attached to the current session
-            in lieu of logging in with a username/password.
-            If username and/or password is supplied, this argument will be ignored.
-        store_password : bool, optional
-            Default False.
-            If true, username and password will be stored securely in your keyring.
-        reenter_password : bool, optional
-            Default False.
-            Asks for the password even if it is already stored in the keyring.
-            This is the way to overwrite an already stored password on the keyring.
-        """
-
-        return super(MastClass, self).login(username=username, password=password, session_token=session_token,
-                                            store_password=store_password, reenter_password=reenter_password)
-
     def logout(self):  # pragma: no cover
         """
         Log out of current MAST session.
@@ -653,7 +641,8 @@ class MastClass(QueryWithLogin):
 
         # setting self._current_service
         if service not in self._column_configs.keys():
-            self._get_col_config(service)
+            fetch_name = kwargs.pop('fetch_name', None)
+            self._get_col_config(service, fetch_name)
         self._current_service = service
 
         # setting up pagination
@@ -757,7 +746,8 @@ class MastClass(QueryWithLogin):
                 continue
 
             colType = "discrete"
-            if (colInfo.get("vot.datatype", colInfo.get("type")) in ("double", "float")) or colInfo.get("treatNumeric"):
+            if (colInfo.get("vot.datatype", colInfo.get("type")) in ("double", "float", "numeric")) \
+               or colInfo.get("treatNumeric"):
                 colType = "continuous"
 
             separator = colInfo.get("separator")
@@ -836,10 +826,10 @@ class ObservationsClass(MastClass):
             List of available missions.
         """
 
-        # getting all the hitogram information
+        # getting all the histogram information
         service = "Mast.Caom.All"
         params = {}
-        response = Mast.service_request_async(service, params, format='extjs')
+        response = self.service_request_async(service, params, format='extjs')
         jsonResponse = response[0].json()
 
         # getting the list of missions
@@ -1194,7 +1184,7 @@ class ObservationsClass(MastClass):
 
         return self.service_request_async(service, params)
 
-    def filter_products(self, products, mrp_only=True, **filters):
+    def filter_products(self, products, mrp_only=False, extension=None, **filters):
         """
         Takes an `astropy.table.Table` of MAST observation data products and filters it based on given filters.
 
@@ -1203,13 +1193,14 @@ class ObservationsClass(MastClass):
         products : `astropy.table.Table`
             Table containing data products to be filtered.
         mrp_only : bool, optional
-            Default True. When set to true only "Minimum Recommended Products" will be returned.
+            Default False. When set to true only "Minimum Recommended Products" will be returned.
+        extension : string, optional
+            Default None. Option to filter by file extension.
         **filters :
             Filters to be applied.  Valid filters are all products fields listed
-            `here <https://masttest.stsci.edu/api/v0/_productsfields.html>`__ and 'extension'
-            which is the desired file extension.
-            The Column Name (or 'extension') is the keyword, with the argument being one or
-            more acceptable values for that parameter.
+            `here <https://masttest.stsci.edu/api/v0/_productsfields.html>`__.
+            The column name is the keyword, with the argument being one or more acceptable values
+            for that parameter.
             Filter behavior is AND between the filters and OR within a filter set.
             For example: productType="SCIENCE",extension=["fits","jpg"]
 
@@ -1218,12 +1209,20 @@ class ObservationsClass(MastClass):
         response : `~astropy.table.Table`
         """
 
-        # Dealing with mrp first, b/c it's special
-        if mrp_only:
-            products.remove_rows(np.where(products['productGroupDescription'] != "Minimum Recommended Products"))
-
         filterMask = np.full(len(products), True, dtype=bool)
 
+        # Applying the special filters (mrp_only and extension)
+        if mrp_only:
+            filterMask &= (products['productGroupDescription'] == "Minimum Recommended Products")
+
+        if extension:
+            mask = np.full(len(products), False, dtype=bool)
+            for elt in extension:
+                mask |= [False if isinstance(x, np.ma.core.MaskedConstant) else x.endswith(elt)
+                         for x in products["productFilename"]]
+            filterMask &= mask
+
+        # Applying the rest of the filters
         for colname, vals in filters.items():
 
             if type(vals) == str:
@@ -1231,11 +1230,7 @@ class ObservationsClass(MastClass):
 
             mask = np.full(len(products), False, dtype=bool)
             for elt in vals:
-                if colname == 'extension':  # extension is not actually a column
-                    mask |= [False if isinstance(x, np.ma.core.MaskedConstant) else x.endswith(elt)
-                             for x in products["productFilename"]]
-                else:
-                    mask |= (products[colname] == elt)
+                mask |= (products[colname] == elt)
 
             filterMask &= mask
 
@@ -1313,7 +1308,7 @@ class ObservationsClass(MastClass):
         log.info("Using the S3 HST public dataset")
         log.warning("Your AWS account will be charged for access to the S3 bucket")
         log.info("See Request Pricing in https://aws.amazon.com/s3/pricing/ for details")
-        log.info("If you have not configured boto3, follow the instructions here: " +
+        log.info("If you have not configured boto3, follow the instructions here: "
                  "https://boto3.readthedocs.io/en/latest/guide/configuration.html")
 
     def disable_s3_hst_dataset(self):
@@ -1505,7 +1500,7 @@ class ObservationsClass(MastClass):
         return manifest
 
     def download_products(self, products, download_dir=None,
-                          cache=True, curl_flag=False, mrp_only=True, **filters):
+                          cache=True, curl_flag=False, mrp_only=False, **filters):
         """
         Download data products.
 
@@ -1523,7 +1518,7 @@ class ObservationsClass(MastClass):
             Default is False.  If true instead of downloading files directly, a curl script
             will be downloaded that can be used to download the data files at a later time.
         mrp_only : bool, optional
-            Default True. When set to true only "Minimum Recommended Products" will be returned.
+            Default False. When set to true only "Minimum Recommended Products" will be returned.
         **filters :
             Filters to be applied.  Valid filters are all products fields listed
             `here <https://masttest.stsci.edu/api/v0/_productsfields.html>`__ and 'extension'
@@ -1600,7 +1595,7 @@ class CatalogsClass(MastClass):
 
     @class_or_instance
     def query_region_async(self, coordinates, radius=0.2*u.deg, catalog="Hsc",
-                           pagesize=None, page=None, **kwargs):
+                           version=None, pagesize=None, page=None, **kwargs):
         """
         Given a sky position and radius, returns a list of catalog entries.
         See column documentation for specific catalogs `here <https://mast.stsci.edu/api/v0/pages.htmll>`__.
@@ -1618,6 +1613,8 @@ class CatalogsClass(MastClass):
         catalog : str, optional
             Default HSC.
             The catalog to be queried.
+        version : int, optional
+            Version number for catalogs that have versions. Default is highest version.
         pagesize : int, optional
             Default None.
             Can be used to override the default pagesize for (set in configs) this query only.
@@ -1627,7 +1624,7 @@ class CatalogsClass(MastClass):
             Can be used to override the default behavior of all results being returned to
             obtain a specific page of results.
         **kwargs
-            Catalog-specific keyword args.
+            Other catalog-specific keyword args.
             These can be found in the (service documentation)[https://mast.stsci.edu/api/v0/_services.html]
             for specific catalogs. For example one can specify the magtype for an HSC search.
 
@@ -1646,11 +1643,26 @@ class CatalogsClass(MastClass):
 
         # Figuring out the service
         if catalog.lower() == "hsc":
-            service = "Mast.Hsc.Db"
+            if version == 2:
+                service = "Mast.Hsc.Db.v2"
+            else:
+                if version not in (3, None):
+                    warnings.warn("Invalid HSC version number, defaulting to v3.", InputWarning)
+                service = "Mast.Hsc.Db.v3"
             self.catalogLimit = kwargs.get('nr', 50000)
+
         elif catalog.lower() == "galex":
             service = "Mast.Galex.Catalog"
             self.catalogLimit = kwargs.get('maxrecords', 50000)
+
+        elif catalog.lower() == "gaia":
+            if version == 1:
+                service = "Mast.Catalogs.GaiaDR1.Cone"
+            else:
+                if version not in (2, None):
+                    warnings.warn("Invalid Gaia version number, defaulting to DR2.", InputWarning)
+                service = "Mast.Catalogs.GaiaDR2.Cone"
+
         else:
             service = "Mast.Catalogs." + catalog + ".Cone"
             self.catalogLimit = None
@@ -1756,13 +1768,13 @@ class CatalogsClass(MastClass):
             service = "Mast.Catalogs.Filtered.Tic"
             if coordinates or objectname:
                 service += ".Position"
-            mashupFilters = self._build_filter_set("Mast.Catalogs.Tess.Cone", service, **criteria)
+            mashupFilters = self._build_filter_set("Mast.Catalogs.All.Tic", service, **criteria)
 
         elif catalog == "DiskDetective":
             service = "Mast.Catalogs.Filtered.DiskDetective"
             if coordinates or objectname:
                 service += ".Position"
-            mashupFilters = self._build_filter_set("Mast.Catalogs.Dd.Cone", service, **criteria)
+            mashupFilters = self._build_filter_set("Mast.Catalogs.All.DiskDetective", service, **criteria)
 
         else:
             raise InvalidQueryError("Criteria query not availible for {}".format(catalog))
@@ -1798,10 +1810,10 @@ class CatalogsClass(MastClass):
         if catalog == "Tic":
             params["columns"] = "c.*"
 
-        return self.service_request_async(service, params)
+        return self.service_request_async(service, params, pagesize=pagesize, page=page)
 
     @class_or_instance
-    def query_hsc_matchid_async(self, match, pagesize=None, page=None):
+    def query_hsc_matchid_async(self, match, version=3, pagesize=None, page=None):
         """
         Returns all the matches for a given Hubble Source Catalog MatchID.
 
@@ -1809,6 +1821,8 @@ class CatalogsClass(MastClass):
         ----------
         match : int or `~astropy.table.Row`
             The matchID or HSC entry to return matches for.
+        version : int, optional
+            The HSC version to match against. Default is v3.
         pagesize : int, optional
             Can be used to override the default pagesize.
             E.g. when using a slow internet connection.
@@ -1825,7 +1839,13 @@ class CatalogsClass(MastClass):
             match = match["MatchID"]
         match = str(match)  # np.int64 gives json serializer problems, so strigify right here
 
-        service = "Mast.HscMatches.Db"
+        if version == 2:
+            service = "Mast.HscMatches.Db.v2"
+        else:
+            if version not in (3, None):
+                warnings.warn("Invalid HSC version number, defaulting to v3.", InputWarning)
+            service = "Mast.HscMatches.Db.v3"
+
         params = {"input": match}
 
         return self.service_request_async(service, params, pagesize, page)
@@ -1894,12 +1914,12 @@ class CatalogsClass(MastClass):
             pathList = []
             for spec in spectra:
                 if spec['SpectrumType'] < 2:
-                    urlList.append('https://hla.stsci.edu/cgi-bin/getdata.cgi?config=ops&dataset=' +
-                                   spec['DatasetName'])
+                    urlList.append('https://hla.stsci.edu/cgi-bin/getdata.cgi?config=ops&dataset={0}'
+                                   .format(spec['DatasetName']))
 
                 else:
-                    urlList.append('https://hla.stsci.edu/cgi-bin/ecfproxy?file_id=' +
-                                   spec['DatasetName'] + '.fits')
+                    urlList.append('https://hla.stsci.edu/cgi-bin/ecfproxy?file_id={0}'
+                                   .format(spec['DatasetName']) + '.fits')
 
                 pathList.append(downloadFile + "/HSC/" + spec['DatasetName'] + '.fits')
 

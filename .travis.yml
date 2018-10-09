@@ -26,10 +26,10 @@ stages:
    - name: Cron tests
      if: type = cron
    - name: Tests with other Python/Numpy versions
-   - name: deploy
-     if: (branch = master) AND ($TRAVIS_PULL_REQUEST = false)
+   - name: Deploy
+     if: ((branch = master) AND type != pull_request)
    - name: Remote data tests
-     if: $TRAVIS_PULL_REQUEST = false
+     if: type != pull_request
 
 env:
     global:
@@ -40,10 +40,10 @@ env:
         - MAIN_CMD='python setup.py'
         - NUMPY_VERSION=stable
         - ASTROPY_VERSION=stable
-        - CONDA_DEPENDENCIES='requests beautifulsoup4 html5lib keyring aplpy matplotlib pyregion jinja2 flask'
+        - CONDA_DEPENDENCIES='requests beautifulsoup4 html5lib keyring aplpy matplotlib pyregion jinja2 flask regions'
         # pandas is used as a workaround of an astropy issue, sometimes it's required for the remote tests
-        - CONDA_DEPENDENCIES_REMOTE='requests beautifulsoup4 html5lib keyring aplpy matplotlib pyregion jinja2 flask pandas'
-        - PIP_DEPENDENCIES='https://github.com/keflavich/httpbin/archive/master.zip pytest-dependency'
+        - CONDA_DEPENDENCIES_REMOTE='requests beautifulsoup4 html5lib keyring aplpy matplotlib pyregion jinja2 flask pandas regions'
+        - PIP_DEPENDENCIES='https://github.com/keflavich/httpbin/archive/master.zip astropy_healpix mocpy pytest-dependency'
         - HTTP_BIN_CMD="import httpbin; httpbin.app.run()"
         - RUN_HTTPBIN='python -c "$HTTP_BIN_CMD" & ACTIVE_HTTPBIN=True'
         - SETUP_CMD='test'
@@ -103,9 +103,14 @@ matrix:
         - os: linux
           stage: Tests with other Python/Numpy versions
           env: PYTHON_VERSION=2.7 NUMPY_VERSION=1.9  KEYRING_VERSION='<12.0'
+               CONDA_DEPENDENCIES="`echo $CONDA_DEPENDENCIES | sed 's/ regions//'`"
+               PIP_DEPENDENCIES="`echo $PIP_DEPENDENCIES regions`"  # There is an issue with the conda packaging of regions for np 1.9
+          before_script: conda install matplotlib=2.2.2=py27h0e671d2_0
+
+        # secretstorage is a keyring dependency, we need to pin the version number to make this job work
         - os: linux
           stage: Tests with other Python/Numpy versions
-          env: PYTHON_VERSION=3.4 NUMPY_VERSION=1.10
+          env: PYTHON_VERSION=3.4 NUMPY_VERSION=1.10 CONDA_DEPENDENCIES="`echo $CONDA_DEPENDENCIES secretstorage=3.0.1`"
         - os: linux
           stage: Tests with other Python/Numpy versions
           env: PYTHON_VERSION=3.5.5 NUMPY_VERSION=1.11 KEYRING_VERSION='<12.0'
@@ -153,7 +158,7 @@ matrix:
           env: MAIN_CMD='pycodestyle astroquery --count'
                SETUP_CMD='' EVENT_TYPE='push pull_request'
 
-        - stage: deploy
+        - stage: Deploy
           env: SETUP_CMD='sdist' EVENT_TYPE='push'
           deploy:
             provider: pypi
@@ -162,6 +167,21 @@ matrix:
               secure: DtqyQkllGcWuKOVMsu9RWRiobeL8bdpMxwdSYpob4Cqj0D2hLLx3w50qr0qpDCFzioB3rXnhbtPKEzHB+4fTFT/Rjito32fFPUtee2Rw4SCe4YIlS0ksPOTmxkeoh2TQLIYcNPPoI7UpUX6uC65nzgCUTmZVoiCweQE+i5GhEBI=
             on:
               branch: master
+          before_install: if [[ ! -z $(echo $TRAVIS_COMMIT_MESSAGE | grep -E "\[nodeploy\]") ]]; then echo "Skipping deployment as indicated by commit message"; travis_terminate 0; fi
+
+    allow_failures:
+        # Allow remote-data tests to fail.
+        - os: linux
+          stage: Remote data tests
+          env: EVENT_TYPE='push cron' DEBUG=True ASTROPY_VERSION=dev
+               SETUP_CMD='test -R -V -a "--durations=50"'
+               CONDA_DEPENDENCIES=$CONDA_DEPENDENCIES_REMOTE
+        - os: linux
+          stage: Remote data tests
+          env: EVENT_TYPE='push cron' PYTHON_VERSION=2.7
+               SETUP_CMD='test --remote-data -V -a "--durations=50"'
+               CONDA_DEPENDENCIES=$CONDA_DEPENDENCIES_REMOTE
+               KEYRING_VERSION='<12.0'
 
 install:
     - git clone git://github.com/astropy/ci-helpers.git

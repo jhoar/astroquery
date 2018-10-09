@@ -1,9 +1,33 @@
 0.3.9 (unreleased)
 ------------------
 
+- ATOMIC: fix several bugs for using Quantited for the range parameters. [#1187]
+- ESASKY: get_maps() accepts dict or list of (name, Table) pairs as input
+  table list. [#1167]
+- ESO: Catch exception on login when keyring fails to get a valid storage.
+  [#1198]
+- ESO: Add option to retrieve calibrations associated to data. [#1184]
+- HITRAN: use class-based API [#824]
+- JPL Horizons: Fix for missing total absolute magnitude or phase coefficient for comets [#1151]
 - MAST: Enable converting list of products into S3 uris [#1126]
+- New tool: MPC module can now request comet and asteroid ephemerides from the Minor Planet Ephemeris Service, and return a table of observatory codes and coordinates. [#1177]
+- NASA_ADS: Use new API [#1162]
 - VO_CONESEARCH: Service validator now uses new STScI VAO TAP registry. [#1114]
-
+- Nasa Exoplanet Arhive: Add option to return all columns. [#1183]
+- File download progress bar no longer displays when Astropy log level
+  is set to "WARNING", "ERROR", or "CRITICAL". [#1188]
+- New tool: CDS - added module to query the MOCServer, a CDS tool providing MOCs
+  and meta data of various data-sets. [#1111]
+- MAST: Updating HSC and Gaia catalog calls (bugfix) [#1203]
+- JPLSpec: New query service for JPL Molecular Spectral Catalog. [#1170]
+- Add docstring and signature for login. [#1199]
+- JPLHorizons: JPL server protocol and epoch range bug fixes, user-defined
+  location and additional ephemerides information added [#1207]
+- MAST: Fixing bug in catalog criteria querues, and updating remote tests. [#1223]
+- JPLSDB: New module for querying JPL's Small Body Database Browser [#1214]
+- MAST: Fixing mrp_only but and changing default to False [#1238]
+- SPLATALOGUE: Minor - utils & tests updated to match upstream change [#1236]
+- FERMI: Switch to HTTPS [#1241]
 
 0.3.8 (2018-04-27)
 ------------------

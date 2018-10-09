@@ -2,19 +2,24 @@
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 import abc
+import inspect
 import pickle
+import getpass
 import hashlib
+import keyring
+import io
 import os
 import requests
 
 from astropy.extern import six
 from astropy.config import paths
-from astropy import log
+from astropy.logger import log
 import astropy.units as u
 from astropy.utils.console import ProgressBarOrSpinner
 import astropy.utils.data
 
 from . import version
+from .utils import system_tools
 
 __all__ = ['BaseQuery', 'QueryWithLogin']
 
@@ -105,7 +110,35 @@ class AstroQuery(object):
         return response
 
 
-@six.add_metaclass(abc.ABCMeta)
+class LoginABCMeta(abc.ABCMeta):
+    """
+    The goal of this metaclass is to copy the docstring and signature from
+    ._login methods, implemented in subclasses, to a .login method that is
+    visible by the users.
+
+    It also inherits from the ABCMeta metaclass as _login is an abstract
+    method.
+
+    """
+
+    def __new__(cls, name, bases, attrs):
+        newcls = super(LoginABCMeta, cls).__new__(cls, name, bases, attrs)
+
+        if '_login' in attrs and name not in ('BaseQuery', 'QueryWithLogin'):
+            # skip theses two classes, BaseQuery and QueryWithLogin, so
+            # below bases[0] should always be QueryWithLogin.
+            def login(*args, **kwargs):
+                bases[0].login(*args, **kwargs)
+
+            login.__doc__ = attrs['_login'].__doc__
+            if not six.PY2:
+                login.__signature__ = inspect.signature(attrs['_login'])
+            setattr(newcls, login.__name__, login)
+
+        return newcls
+
+
+@six.add_metaclass(LoginABCMeta)
 class BaseQuery(object):
     """
     This is the base class for all the query classes in astroquery. It
@@ -138,8 +171,7 @@ class BaseQuery(object):
         but with added caching-related tools
 
         This is a low-level method not generally intended for use by astroquery
-        end-users.  As such, it is likely to be renamed to, e.g., `_request` in
-        the near future.
+        end-users.
 
         Parameters
         ----------
@@ -275,9 +307,16 @@ class BaseQuery(object):
 
         bytes_read = 0
 
+        # Only show progress bar if logging level is INFO or lower.
+        if log.getEffectiveLevel() <= 20:
+            progress_stream = None  # Astropy default
+        else:
+            progress_stream = io.StringIO()
+
         with ProgressBarOrSpinner(
-            length, ('Downloading URL {0} to {1} ...'
-                     .format(url, local_filepath))) as pb:
+                length, ('Downloading URL {0} to {1} ...'
+                         .format(url, local_filepath)),
+                file=progress_stream) as pb:
             with open(local_filepath, open_mode) as f:
                 for block in response.iter_content(blocksize):
                     f.write(block)
@@ -320,6 +359,31 @@ class QueryWithLogin(BaseQuery):
     def __init__(self):
         super(QueryWithLogin, self).__init__()
         self._authenticated = False
+
+    def _get_password(self, service_name, username, reenter=False):
+        """Get password from keyring or prompt."""
+
+        password_from_keyring = None
+        if reenter is False:
+            try:
+                password_from_keyring = keyring.get_password(
+                    service_name, username)
+            except keyring.errors.KeyringError as exc:
+                log.warning("Failed to get a valid keyring for password "
+                            "storage: {}".format(exc))
+
+        if password_from_keyring is None:
+            log.warning("No password was found in the keychain for the "
+                        "provided username.")
+            if system_tools.in_ipynb():
+                log.warning("You may be using an ipython notebook:"
+                            " the password form will appear in your terminal.")
+            password = getpass.getpass("{0}, enter your password:\n"
+                                       .format(username))
+        else:
+            password = password_from_keyring
+
+        return password, password_from_keyring
 
     @abc.abstractmethod
     def _login(self, *args, **kwargs):
